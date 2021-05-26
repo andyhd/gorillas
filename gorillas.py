@@ -25,6 +25,7 @@ class Building(Rect):
         for i in range(1, 4)
     ]
     WIDTH = 80
+    TILE_HEIGHT = 20
 
     def __init__(self, *args, **kwargs) -> None:
         self.skin = Building.SKINS[kwargs.pop("skin", 0)]
@@ -42,7 +43,7 @@ class Building(Rect):
         return buildings
 
     def do_draw(self, surface) -> None:
-        for y in range(self.y, self.y + self.height, 20):
+        for y in range(self.y, self.y + self.height, Building.TILE_HEIGHT):
             surface.blit(self.skin, (self.x, y))
 
 
@@ -75,6 +76,39 @@ class Banana(Actor, PixelCollision):
         self.vy = vy
 
 
+class WindGauge:
+    def __init__(self, centertop, dimensions, max_wind_speed) -> None:
+        self.indicator = pygame.image.load("images/wind_indicator.png")
+        (self.center, self.top) = centertop
+        (self.width, self.height) = dimensions
+        self.left = self.center - (self.width / 2)
+        self.cliprect = Rect((self.width / 2, 0), (0, self.height))
+        self.offset = 0
+        self.step = (self.width / 2) / max_wind_speed
+
+    def draw(self):
+
+        # border
+        screen.draw.rect(
+            Rect((self.left - 1, self.top), (self.width + 2, self.height + 2)),
+            "white",
+        )
+
+        # gauge reading
+        screen.surface.blit(self.indicator, (self.center + self.offset, self.top + 1), self.cliprect)
+
+        # divider
+        screen.draw.line((self.center, self.top), (self.center, self.top + self.height), "white")
+
+    def set_speed_and_direction(self, speed, direction):
+        self.offset = 0
+        self.cliprect.left = self.width / 2
+        self.cliprect.width = speed * self.step
+        if direction < 0:
+            self.cliprect.left -= self.cliprect.width
+            self.offset = -self.cliprect.width
+
+
 class World:
     def __init__(self):
         self.angle: float = 0
@@ -82,7 +116,13 @@ class World:
         self.speed_fudge = 2  # speed up simulation
         self.gravity = 9.8
         self.wind_speed = 0
+        self.wind_speed_max = 8
         self.wind_direction = 1
+        self.wind_gauge = WindGauge(
+            (WIDTH / 2, HEIGHT - 16),
+            (160, 14),
+            self.wind_speed_max,
+        )
         self.buildings = []
         self.buildings_mask = None
         self.buildings_surf = None
@@ -127,24 +167,9 @@ class World:
         for gorilla in self.gorillas:
             gorilla.draw()
 
-        screen.draw.filled_rect(Rect((0, HEIGHT - 16), (WIDTH, 16)), (0, 0, 0))
-        screen.draw.text(f"Player 1: {self.scores[0]}", (0, HEIGHT - 16))
-        screen.draw.text(f"Player 2: {self.scores[1]}", (WIDTH - 90, HEIGHT - 16))
-
-        screen.draw.rect(
-            Rect(
-                (WIDTH / 2 - 81, HEIGHT - 16),
-                (162, 16),
-            ),
-            (255, 255, 255),
-        )
-        bar = Rect((0, HEIGHT - 15), (self.wind_speed * 8, 14))
-        if self.wind_direction > 0:
-            bar.x = WIDTH / 2
-        else:
-            bar.x = WIDTH / 2 - self.wind_speed * 8
-        screen.draw.filled_rect(bar, (255, 0, 0))
-        screen.draw.line((WIDTH / 2, HEIGHT - 16), (WIDTH / 2, HEIGHT), (255, 255, 255))
+        self.draw_scores()
+        self.wind_gauge.draw()
+        self.draw_hotseat_indicator()
 
     def set_angle(self, angle):
         self.angle = math.radians(int(angle))
@@ -159,8 +184,25 @@ class World:
         self.hotseat = (self.hotseat + 1) % 2
 
     def change_wind(self, *_):
-        self.wind_speed = random.randint(0, 10)
+        self.wind_speed = random.randint(0, self.wind_speed_max)
         self.wind_direction = random.choice([1, -1])
+        self.wind_gauge.set_speed_and_direction(
+            self.wind_speed,
+            self.wind_direction,
+        )
+
+    def draw_scores(self):
+        screen.draw.filled_rect(Rect((0, HEIGHT - 16), (WIDTH, 16)), (0, 0, 0))
+        screen.draw.text(f"Player 1: {self.scores[0]}", (0, HEIGHT - 16))
+        screen.draw.text(f"Player 2: {self.scores[1]}", (WIDTH - 90, HEIGHT - 16))
+
+    def draw_hotseat_indicator(self):
+        indicator = "p1_indicator.png"
+        indicator_pos = 100
+        if self.hotseat == 1:
+            indicator = "p2_indicator.png"
+            indicator_pos = WIDTH - 132
+        screen.blit(indicator, (indicator_pos, HEIGHT - 16))
 
 
 class GameState(EventSource, State):
