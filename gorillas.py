@@ -5,7 +5,6 @@ import pygame
 from pgzero.actor import Actor
 from pgzero.keyboard import keys
 from pgzero.rect import Rect
-from pygame.sprite import collide_mask
 
 from event import Event
 from event import EventSource
@@ -47,6 +46,32 @@ class Building(Rect):
             surface.blit(self.skin, (self.x, y))
 
 
+class Skyline:
+    def __init__(self):
+        self.buildings = []
+        self.mask = None
+        self.rect = Rect((0, 0), (WIDTH, HEIGHT))
+        self.surface = None
+        self.num_buildings = 10
+        self.generate_buildings()
+
+    def generate_buildings(self):
+        self.buildings = Building.random_list(self.num_buildings)
+        self.surface = pygame.Surface((WIDTH, HEIGHT))
+        for building in self.buildings:
+            building.do_draw(self.surface)
+        self.mask = pygame.mask.from_surface(self.surface)
+
+    def draw(self):
+        screen.blit(self.mask.to_surface(
+            unsetcolor=None,
+            setsurface=self.surface,
+        ), (0, 0))
+
+    def destroy(self, other):
+        self.mask.erase(other.mask, (int(other.rect.left), int(other.rect.top)))
+
+
 class PixelCollision:
 
     @property
@@ -58,7 +83,14 @@ class PixelCollision:
         return Rect(self.topleft, (self.width, self.height))
 
     def collided(self, other):
-        return collide_mask(self, other)
+        if not self.rect.colliderect(other.rect):
+            return False
+
+        offset = (
+            self.rect.left - other.rect.left,
+            self.rect.top - other.rect.top,
+        )
+        return other.mask.overlap(self.mask, offset)
 
 
 class Gorilla(Actor, PixelCollision):
@@ -69,11 +101,34 @@ class Gorilla(Actor, PixelCollision):
         super().__init__("gorilla", pos)
 
 
+class Explosion:
+    HEIGHT = 32
+    WIDTH = 32
+
+    def __init__(self, pos: tuple[float, float]) -> None:
+        self.rect = Rect(pos, (self.WIDTH, self.HEIGHT))
+        self.surface = pygame.Surface((self.WIDTH, self.HEIGHT))
+        pygame.draw.circle(
+            self.surface,
+            "white",
+            (self.WIDTH / 2, self.HEIGHT / 2),
+            self.WIDTH / 2,
+            width=0,
+        )
+        self.mask = pygame.mask.from_surface(self.surface)
+
+
 class Banana(Actor, PixelCollision):
     def __init__(self, pos: tuple[float, float], vx: float, vy: float) -> None:
         super().__init__("banana", pos)
         self.vx = vx
         self.vy = vy
+
+    def explode(self):
+        return Explosion((self.x - 16, self.y - 16))
+
+    def draw(self):
+        super().draw()
 
 
 class WindGauge:
@@ -87,18 +142,20 @@ class WindGauge:
         self.step = (self.width / 2) / max_wind_speed
 
     def draw(self):
-
-        # border
         screen.draw.rect(
             Rect((self.left - 1, self.top), (self.width + 2, self.height + 2)),
             "white",
         )
-
-        # gauge reading
-        screen.surface.blit(self.indicator, (self.center + self.offset, self.top + 1), self.cliprect)
-
-        # divider
-        screen.draw.line((self.center, self.top), (self.center, self.top + self.height), "white")
+        screen.surface.blit(
+            self.indicator,
+            (self.center + self.offset, self.top + 1),
+            self.cliprect,
+        )
+        screen.draw.line(
+            (self.center, self.top),
+            (self.center, self.top + self.height),
+            "white",
+        )
 
     def set_speed_and_direction(self, speed, direction):
         self.offset = 0
@@ -107,6 +164,45 @@ class WindGauge:
         if direction < 0:
             self.cliprect.left -= self.cliprect.width
             self.offset = -self.cliprect.width
+
+
+class Scoreboard:
+    def __init__(self):
+        self.scores = [0, 0]
+
+    def __iter__(self):
+        return iter(self.scores)
+
+    def draw(self):
+        screen.draw.filled_rect(Rect((0, HEIGHT - 16), (WIDTH, 16)), (0, 0, 0))
+        screen.draw.text(f"Player 1: {self.scores[0]}", (0, HEIGHT - 16))
+        screen.draw.text(f"Player 2: {self.scores[1]}", (WIDTH - 90, HEIGHT - 16))
+
+    def add_score(self, index, value=1):
+        self.scores[index] += value
+
+    def reset(self):
+        self.scores = [0, 0]
+
+
+class Hotseat:
+    def __init__(self, num_players=2):
+        self.index = 0
+        self.num_players = num_players
+
+    def draw(self):
+        indicator = "p1_indicator.png"
+        indicator_pos = 100
+        if self.index == 1:
+            indicator = "p2_indicator.png"
+            indicator_pos = WIDTH - 132
+        screen.blit(indicator, (indicator_pos, HEIGHT - 16))
+
+    def next_player(self, *_):
+        self.index = (self.index + 1) % self.num_players
+
+    def reset(self):
+        self.index = 0
 
 
 class World:
@@ -123,65 +219,47 @@ class World:
             (160, 14),
             self.wind_speed_max,
         )
-        self.buildings = []
-        self.buildings_mask = None
-        self.buildings_surf = None
         self.gorillas = []
-        self.scores = []
-        self.num_buildings = 10
+        self.skyline = Skyline()
+        self.scoreboard = Scoreboard()
+        self.hotseat = Hotseat()
         self.sky = pygame.image.load("images/sky.png")
-        self.explosion = pygame.Surface((32, 32))
-        pygame.draw.circle(self.explosion, "white", (16, 16), 16, width=0)
-        self.explosion_mask = pygame.mask.from_surface(self.explosion)
         self.reset()
 
     def reset(self):
         self.angle = 0
         self.speed = 0
-        self.hotseat = 0
-        self.scores = [0, 0]
+        self.hotseat.reset()
+        self.scoreboard.reset()
         self.rebuild()
 
     def rebuild(self, *_):
-        self.buildings = Building.random_list(self.num_buildings)
-        self.buildings_surf = pygame.Surface((WIDTH, HEIGHT))
-        for building in self.buildings:
-            building.do_draw(self.buildings_surf)
-        self.buildings_mask = pygame.mask.from_surface(self.buildings_surf)
+        self.skyline.generate_buildings()
         self.gorillas = [
             Gorilla((
-                self.buildings[i].x + Building.WIDTH / 2,
-                self.buildings[i].y - Gorilla.HEIGHT / 2 + 1,
+                self.skyline.buildings[i].x + Building.WIDTH / 2,
+                self.skyline.buildings[i].y - Gorilla.HEIGHT / 2 + 1,
             ))
-            for i in (0, self.num_buildings - 1)
+            for i in (0, self.skyline.num_buildings - 1)
         ]
 
     def draw(self) -> None:
         screen.blit(self.sky, (0, 0))
 
-        screen.blit(self.buildings_mask.to_surface(
-            unsetcolor=None,
-            setsurface=self.buildings_surf,
-        ), (0, 0))
+        self.skyline.draw()
 
         for gorilla in self.gorillas:
             gorilla.draw()
 
-        self.draw_scores()
+        self.scoreboard.draw()
         self.wind_gauge.draw()
-        self.draw_hotseat_indicator()
+        self.hotseat.draw()
 
     def set_angle(self, angle):
         self.angle = math.radians(int(angle))
 
     def set_speed(self, speed):
         self.speed = int(speed)
-
-    def update_score(self, gorilla_hit):
-        self.scores[(gorilla_hit + 1) % 2] += 1
-
-    def toggle_hotseat(self):
-        self.hotseat = (self.hotseat + 1) % 2
 
     def change_wind(self, *_):
         self.wind_speed = random.randint(0, self.wind_speed_max)
@@ -190,19 +268,6 @@ class World:
             self.wind_speed,
             self.wind_direction,
         )
-
-    def draw_scores(self):
-        screen.draw.filled_rect(Rect((0, HEIGHT - 16), (WIDTH, 16)), (0, 0, 0))
-        screen.draw.text(f"Player 1: {self.scores[0]}", (0, HEIGHT - 16))
-        screen.draw.text(f"Player 2: {self.scores[1]}", (WIDTH - 90, HEIGHT - 16))
-
-    def draw_hotseat_indicator(self):
-        indicator = "p1_indicator.png"
-        indicator_pos = 100
-        if self.hotseat == 1:
-            indicator = "p2_indicator.png"
-            indicator_pos = WIDTH - 132
-        screen.blit(indicator, (indicator_pos, HEIGHT - 16))
 
 
 class GameState(EventSource, State):
@@ -238,7 +303,7 @@ class GetReady(GameState):
     def draw(self) -> None:
         self.world.draw()
         screen.draw.filled_rect(Rect((0, HEIGHT / 2), (WIDTH, 16)), (0, 0, 0))
-        screen.draw.text(f"Get ready Player {self.world.hotseat + 1}", (WIDTH / 2 - 90, HEIGHT / 2))
+        screen.draw.text(f"Get ready Player {self.world.hotseat.index + 1}", (WIDTH / 2 - 90, HEIGHT / 2))
 
     def update(self, dt) -> None:
         if not hasattr(self, "timer"):
@@ -286,7 +351,6 @@ class Throw(GameState):
         self.opponent = None
 
         self.on_done(self.reset)
-        self.on_hit_gorilla(sounds.hit.play)
 
     def reset(self):
         self.banana = None
@@ -309,32 +373,27 @@ class Throw(GameState):
         self.banana.vy += dt * self.world.speed_fudge * self.world.gravity
 
         if self.banana.x < 0 or self.banana.x > WIDTH or self.banana.y > HEIGHT:
-            self.done()
+            return self.done()
 
-        elif self.banana.collided(self.opponent):
-            self.hit_gorilla((self.world.hotseat + 1) % 2)
-            self.done()
-
-        elif self.world.buildings_mask.overlap(
-            self.banana.mask,
-            (int(self.banana.left), int(self.banana.top)),
-        ):
-            self.world.buildings_mask.erase(
-                self.world.explosion_mask,
-                (int(self.banana.x - 16), int(self.banana.y - 16)),
-            )
+        if self.banana.collided(self.opponent):
+            self.hit_gorilla(self.world.hotseat.index)
             sounds.hit.play()
-            self.done()
+            return self.done()
+
+        if self.banana.collided(self.world.skyline):
+            self.world.skyline.destroy(self.banana.explode())
+            sounds.hit.play()
+            return self.done()
 
     def launch_banana(self) -> None:
-        gorilla = self.world.gorillas[self.world.hotseat]
-        self.opponent = self.world.gorillas[(self.world.hotseat + 1) % 2]
+        gorilla = self.world.gorillas[self.world.hotseat.index]
+        self.opponent = self.world.gorillas[(self.world.hotseat.index + 1) % 2]
         self.banana = Banana(
             (gorilla.x, gorilla.y - Gorilla.HEIGHT / 2),
             vx=self.world.speed * math.cos(self.world.angle),
             vy=-1 * self.world.speed * math.sin(self.world.angle),
         )
-        if self.world.hotseat == 1:
+        if self.world.hotseat.index == 1:
             self.banana.vx = -self.banana.vx
         sounds.throw.play()
 
@@ -369,11 +428,11 @@ class Game(StateMachine):
         angle_input.on_done(self.transition(speed_input))
         speed_input.on_done(self.world.set_speed)
         speed_input.on_done(self.transition(throw))
-        throw.on_hit_gorilla(self.world.update_score)
+        throw.on_hit_gorilla(self.world.scoreboard.add_score)
         throw.on_hit_gorilla(self.world.change_wind)
         throw.on_hit_gorilla(self.world.rebuild)
         throw.on_done(self.transition(game_over, condition=self.done))
-        throw.on_done(self.world.toggle_hotseat)
+        throw.on_done(self.world.hotseat.next_player)
         throw.on_done(self.transition(get_ready, condition=lambda: not self.done()))
         game_over.on_done(self.world.reset)
         game_over.on_done(self.transition(menu))
@@ -381,7 +440,7 @@ class Game(StateMachine):
         self.current_state = menu
 
     def done(self) -> bool:
-        return any(score > 2 for score in self.world.scores)
+        return any(score > 2 for score in self.world.scoreboard)
 
     def draw(self) -> None:
         self.current_state.draw()
