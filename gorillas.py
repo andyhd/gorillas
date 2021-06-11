@@ -208,7 +208,7 @@ class Hotseat:
 class World:
     def __init__(self):
         self.angle: float = 0
-        self.speed: int = 0
+        self.power: int = 0
         self.speed_fudge = 2  # speed up simulation
         self.gravity = 9.8
         self.wind_speed = 0
@@ -228,7 +228,7 @@ class World:
 
     def reset(self):
         self.angle = 0
-        self.speed = 0
+        self.power = 0
         self.hotseat.reset()
         self.scoreboard.reset()
         self.rebuild()
@@ -255,11 +255,9 @@ class World:
         self.wind_gauge.draw()
         self.hotseat.draw()
 
-    def set_angle(self, angle):
-        self.angle = math.radians(int(angle))
-
-    def set_speed(self, speed):
-        self.speed = int(speed)
+    def set_angle_and_power(self, angle, power):
+        self.angle = angle
+        self.power = power
 
     def change_wind(self, *_):
         self.wind_speed = random.randint(0, self.wind_speed_max)
@@ -278,6 +276,15 @@ class GameState(EventSource, State):
         pass
 
     def on_key_up(self, *_) -> None:
+        pass
+
+    def on_mouse_down(self, *_) -> None:
+        pass
+
+    def on_mouse_move(self, *_) -> None:
+        pass
+
+    def on_mouse_up(self, *_) -> None:
         pass
 
 
@@ -314,32 +321,86 @@ class GetReady(GameState):
             self.timer = 0
 
 
-class NumberInput(GameState):
-    def __init__(self, prompt: str) -> None:
+class ThrowInput(GameState):
+    RETICLE_WIDTH = 32
+
+    def __init__(self, world) -> None:
+        self.change_per_second = 50
+        self.direction = 1
         self.done = Event()
-        self.input: list[str] = []
-        self.prompt = prompt
+        self.angle_input = 0
+        self.power_input = 10
+        self.min_power = 10
+        self.max_power = 100
+        self.pulse_power = False
+        self.reticle = pygame.image.load("images/reticle.png")
+        self.world = world
 
     def draw(self) -> None:
+        self.world.draw()
+
+        gorilla = self.world.gorillas[self.world.hotseat.index]
+        angle = int(self.angle_input * (180 / math.pi))
+        if self.world.hotseat.index == 1:
+            angle = 180 - angle
+        power = int(self.power_input)
+
         screen.draw.filled_rect(Rect((0, 0), (WIDTH, 16)), (0, 0, 0))
         screen.draw.text(
-            f"{self.prompt}: {''.join(self.input)}",
+            f"Angle: {str(angle)}, Power: {str(power)}",
             (0, 0),
         )
 
-    def on_key_up(self, key: int, *_) -> None:
-        number_keys = [getattr(keys, f"K_{i}") for i in range(10)]
+        angle_x = math.cos(self.angle_input)
+        angle_y = math.sin(self.angle_input)
 
-        for i, number_key in enumerate(number_keys):
-            if key == number_key:
-                self.input.append(str(i))
+        reticle_pos = (
+            gorilla.x + angle_x * Gorilla.WIDTH - self.RETICLE_WIDTH / 2,
+            gorilla.y - angle_y * Gorilla.WIDTH - self.RETICLE_WIDTH / 2,
+        )
+        screen.blit(self.reticle, reticle_pos)
 
-        if key == keys.BACKSPACE and len(self.input):
-            self.input.pop()
+        if self.pulse_power:
 
-        if key == keys.RETURN:
-            self.done("".join(self.input))
-            self.input = []
+            powerbar_length = (self.power_input / self.max_power) * (Gorilla.WIDTH / 2)
+            powerbar_start = (
+                int(gorilla.x + angle_x * Gorilla.WIDTH / 2),
+                int(gorilla.y - angle_y * Gorilla.WIDTH / 2),
+            )
+            powerbar_end = (
+                int(gorilla.x + angle_x * (Gorilla.WIDTH / 2 + powerbar_length)),
+                int(gorilla.y - angle_y * (Gorilla.WIDTH / 2 + powerbar_length)),
+            )
+
+            pygame.draw.line(
+                screen.surface,
+                (255, 0, 0),
+                powerbar_start,
+                powerbar_end,
+                width=4,
+            )
+
+    def update(self, dt) -> None:
+        if self.pulse_power:
+            self.power_input += self.change_per_second * dt * self.direction
+            if self.power_input < self.min_power:
+                self.power_input = 2 * self.min_power - self.power_input
+                self.direction = 1
+            if self.power_input > self.max_power:
+                self.power_input = 2 * self.max_power - self.power_input
+                self.direction = -1
+
+    def on_mouse_move(self, pos, rel, buttons):
+        x, y = pos
+        gorilla = self.world.gorillas[self.world.hotseat.index]
+        self.angle_input = math.atan2(gorilla.y - y, x - gorilla.x)
+
+    def on_mouse_down(self, pos, button):
+        self.pulse_power = True
+
+    def on_mouse_up(self, pos, button):
+        self.pulse_power = False
+        self.done(self.angle_input, self.power_input)
 
 
 class Throw(GameState):
@@ -389,12 +450,10 @@ class Throw(GameState):
         gorilla = self.world.gorillas[self.world.hotseat.index]
         self.opponent = self.world.gorillas[(self.world.hotseat.index + 1) % 2]
         self.banana = Banana(
-            (gorilla.x, gorilla.y - Gorilla.HEIGHT / 2),
-            vx=self.world.speed * math.cos(self.world.angle),
-            vy=-1 * self.world.speed * math.sin(self.world.angle),
+            (gorilla.x, gorilla.y),
+            vx=self.world.power * math.cos(self.world.angle),
+            vy=-1 * self.world.power * math.sin(self.world.angle),
         )
-        if self.world.hotseat.index == 1:
-            self.banana.vx = -self.banana.vx
         sounds.throw.play()
 
 
@@ -417,17 +476,14 @@ class Game(StateMachine):
 
         menu = MainMenu()
         get_ready = GetReady(self.world)
-        angle_input = NumberInput("Angle")
-        speed_input = NumberInput("Speed")
+        throw_input = ThrowInput(self.world)
         throw = Throw(self.world)
         game_over = GameOver()
 
         menu.on_done(self.transition(get_ready))
-        get_ready.on_done(self.transition(angle_input))
-        angle_input.on_done(self.world.set_angle)
-        angle_input.on_done(self.transition(speed_input))
-        speed_input.on_done(self.world.set_speed)
-        speed_input.on_done(self.transition(throw))
+        get_ready.on_done(self.transition(throw_input))
+        throw_input.on_done(self.world.set_angle_and_power)
+        throw_input.on_done(self.transition(throw))
         throw.on_hit_gorilla(self.world.scoreboard.add_score)
         throw.on_hit_gorilla(self.world.change_wind)
         throw.on_hit_gorilla(self.world.rebuild)
@@ -451,6 +507,15 @@ class Game(StateMachine):
     def on_key_up(self, *args, **kwargs) -> None:
         self.current_state.on_key_up(*args, **kwargs)
 
+    def on_mouse_down(self, *args, **kwargs) -> None:
+        self.current_state.on_mouse_down(*args, **kwargs)
+
+    def on_mouse_move(self, *args, **kwargs) -> None:
+        self.current_state.on_mouse_move(*args, **kwargs)
+
+    def on_mouse_up(self, *args, **kwargs) -> None:
+        self.current_state.on_mouse_up(*args, **kwargs)
+
 
 game = Game()
 
@@ -465,3 +530,15 @@ def update(dt) -> None:
 
 def on_key_up(key, mod) -> None:
     game.on_key_up(key, mod)
+
+
+def on_mouse_down(pos, button) -> None:
+    game.on_mouse_down(pos, button)
+
+
+def on_mouse_move(pos, rel, buttons) -> None:
+    game.on_mouse_move(pos, rel, buttons)
+
+
+def on_mouse_up(pos, button) -> None:
+    game.on_mouse_up(pos, button)
