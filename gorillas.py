@@ -5,6 +5,7 @@ import pygame
 from pgzero.actor import Actor
 from pgzero.keyboard import keys
 from pgzero.rect import Rect
+from pygame.math import Vector2
 
 from event import Event
 from event import EventSource
@@ -16,13 +17,17 @@ HEIGHT = 600
 WIDTH = 800
 
 
+def rotate(surface, angle, pivot, offset):
+    rotated_surface = pygame.transform.rotate(surface, angle)
+    rotated_offset = Vector2(offset).rotate(-angle)
+    rect = rotated_surface.get_rect(center=pivot + rotated_offset)
+    return rotated_surface, rect
+
+
 class Building(Rect):
     MAX_HEIGHT = 320
     MIN_HEIGHT = 20
-    SKINS = [
-        pygame.image.load(f"images/building{i}.png")
-        for i in range(1, 4)
-    ]
+    SKINS = [pygame.image.load(f"images/building{i}.png") for i in range(1, 4)]
     WIDTH = 80
     TILE_HEIGHT = 20
 
@@ -35,10 +40,13 @@ class Building(Rect):
         buildings = []
         for x in range(num_buildings):
             height = random.randint(Building.MIN_HEIGHT, Building.MAX_HEIGHT)
-            buildings.append(Building(
-                (x * Building.WIDTH, HEIGHT - height), (Building.WIDTH, height),
-                skin=random.randint(0, 2),
-            ))
+            buildings.append(
+                Building(
+                    (x * Building.WIDTH, HEIGHT - height),
+                    (Building.WIDTH, height),
+                    skin=random.randint(0, 2),
+                )
+            )
         return buildings
 
     def do_draw(self, surface) -> None:
@@ -63,17 +71,19 @@ class Skyline:
         self.mask = pygame.mask.from_surface(self.surface)
 
     def draw(self):
-        screen.blit(self.mask.to_surface(
-            unsetcolor=None,
-            setsurface=self.surface,
-        ), (0, 0))
+        screen.blit(
+            self.mask.to_surface(
+                unsetcolor=None,
+                setsurface=self.surface,
+            ),
+            (0, 0),
+        )
 
     def destroy(self, other):
         self.mask.erase(other.mask, (int(other.rect.left), int(other.rect.top)))
 
 
 class PixelCollision:
-
     @property
     def mask(self):
         return pygame.mask.from_surface(self._surf)
@@ -236,10 +246,12 @@ class World:
     def rebuild(self, *_):
         self.skyline.generate_buildings()
         self.gorillas = [
-            Gorilla((
-                self.skyline.buildings[i].x + Building.WIDTH / 2,
-                self.skyline.buildings[i].y - Gorilla.HEIGHT / 2 + 1,
-            ))
+            Gorilla(
+                (
+                    self.skyline.buildings[i].x + Building.WIDTH / 2,
+                    self.skyline.buildings[i].y - Gorilla.HEIGHT / 2 + 1,
+                )
+            )
             for i in (0, self.skyline.num_buildings - 1)
         ]
 
@@ -310,7 +322,10 @@ class GetReady(GameState):
     def draw(self) -> None:
         self.world.draw()
         screen.draw.filled_rect(Rect((0, HEIGHT / 2), (WIDTH, 16)), (0, 0, 0))
-        screen.draw.text(f"Get ready Player {self.world.hotseat.index + 1}", (WIDTH / 2 - 90, HEIGHT / 2))
+        screen.draw.text(
+            f"Get ready Player {self.world.hotseat.index + 1}",
+            (WIDTH / 2 - 90, HEIGHT / 2),
+        )
 
     def update(self, dt) -> None:
         if not hasattr(self, "timer"):
@@ -325,15 +340,16 @@ class ThrowInput(GameState):
     RETICLE_WIDTH = 32
 
     def __init__(self, world) -> None:
-        self.change_per_second = 50
+        self.change_per_second = 100
         self.direction = 1
         self.done = Event()
         self.angle_input = 0
         self.power_input = 10
         self.min_power = 10
-        self.max_power = 100
+        self.max_power = 200
         self.pulse_power = False
         self.reticle = pygame.image.load("images/reticle.png")
+        self.powerbar = pygame.image.load("images/powerbar.png")
         self.world = world
 
     def draw(self) -> None:
@@ -361,23 +377,20 @@ class ThrowInput(GameState):
         screen.blit(self.reticle, reticle_pos)
 
         if self.pulse_power:
-
-            powerbar_length = (self.power_input / self.max_power) * (Gorilla.WIDTH / 2)
-            powerbar_start = (
-                int(gorilla.x + angle_x * Gorilla.WIDTH / 2),
-                int(gorilla.y - angle_y * Gorilla.WIDTH / 2),
+            half_width = Gorilla.WIDTH / 2
+            powerbar_length = (self.power_input / self.max_power) * half_width
+            powerbar = self.powerbar.subsurface(
+                Rect((0, 0), (half_width + powerbar_length, Gorilla.HEIGHT)),
+            ).copy()
+            powerbar, rect = rotate(
+                powerbar,
+                int(self.angle_input * (180 / math.pi)),
+                gorilla.center,
+                (powerbar_length / 2 + 16, 0),
             )
-            powerbar_end = (
-                int(gorilla.x + angle_x * (Gorilla.WIDTH / 2 + powerbar_length)),
-                int(gorilla.y - angle_y * (Gorilla.WIDTH / 2 + powerbar_length)),
-            )
-
-            pygame.draw.line(
-                screen.surface,
-                (255, 0, 0),
-                powerbar_start,
-                powerbar_end,
-                width=4,
+            screen.blit(
+                powerbar,
+                rect.topleft,
             )
 
     def update(self, dt) -> None:
@@ -390,13 +403,20 @@ class ThrowInput(GameState):
                 self.power_input = 2 * self.max_power - self.power_input
                 self.direction = -1
 
-    def on_mouse_move(self, pos, rel, buttons):
+    def set_angle_from_mouse_pos(self, pos):
         x, y = pos
         gorilla = self.world.gorillas[self.world.hotseat.index]
         self.angle_input = math.atan2(gorilla.y - y, x - gorilla.x)
 
+    def reset_angle(self, *_):
+        self.set_angle_from_mouse_pos(pygame.mouse.get_pos())
+
+    def on_mouse_move(self, pos, rel, buttons):
+        self.set_angle_from_mouse_pos(pos)
+
     def on_mouse_down(self, pos, button):
         self.pulse_power = True
+        self.power_input = self.min_power
 
     def on_mouse_up(self, pos, button):
         self.pulse_power = False
@@ -427,10 +447,15 @@ class Throw(GameState):
             self.launch_banana()
 
         self.banana.angle += 5
-        self.banana.x += (dt * self.world.speed_fudge * self.banana.vx)
-        self.banana.y += (dt * self.world.speed_fudge * self.banana.vy)
+        self.banana.x += dt * self.world.speed_fudge * self.banana.vx
+        self.banana.y += dt * self.world.speed_fudge * self.banana.vy
 
-        self.banana.vx += dt * self.world.speed_fudge * self.world.wind_direction * self.world.wind_speed
+        self.banana.vx += (
+            dt
+            * self.world.speed_fudge
+            * self.world.wind_direction
+            * self.world.wind_speed
+        )
         self.banana.vy += dt * self.world.speed_fudge * self.world.gravity
 
         if self.banana.x < 0 or self.banana.x > WIDTH or self.banana.y > HEIGHT:
@@ -470,7 +495,6 @@ class GameOver(GameState):
 
 
 class Game(StateMachine):
-
     def __init__(self) -> None:
         self.world = World()
 
@@ -482,6 +506,7 @@ class Game(StateMachine):
 
         menu.on_done(self.transition(get_ready))
         get_ready.on_done(self.transition(throw_input))
+        get_ready.on_done(throw_input.reset_angle)
         throw_input.on_done(self.world.set_angle_and_power)
         throw_input.on_done(self.transition(throw))
         throw.on_hit_gorilla(self.world.scoreboard.add_score)
