@@ -9,6 +9,7 @@ from pygame.math import Vector2
 
 from event import Event
 from event import EventSource
+from sky import Sky
 from state import State
 from state import StateMachine
 
@@ -233,7 +234,8 @@ class World:
         self.skyline = Skyline()
         self.scoreboard = Scoreboard()
         self.hotseat = Hotseat()
-        self.sky = pygame.image.load("images/sky.png")
+        self.sky = Sky(WIDTH, HEIGHT)
+        self.time = 0
         self.reset()
 
     def reset(self):
@@ -256,7 +258,7 @@ class World:
         ]
 
     def draw(self) -> None:
-        screen.blit(self.sky, (0, 0))
+        screen.blit(self.sky.gradient(self.time), (0, 0))
 
         self.skyline.draw()
 
@@ -278,6 +280,12 @@ class World:
             self.wind_speed,
             self.wind_direction,
         )
+
+    def set_time(self, *_, time=None):
+        if time is None:
+            time = random.randint(0, 360)
+        time = time % 360
+        self.time = time
 
 
 class GameState(EventSource, State):
@@ -511,6 +519,7 @@ class Game(StateMachine):
         throw_input.on_done(self.transition(throw))
         throw.on_hit_gorilla(self.world.scoreboard.add_score)
         throw.on_hit_gorilla(self.world.change_wind)
+        throw.on_hit_gorilla(self.world.set_time)
         throw.on_hit_gorilla(self.world.rebuild)
         throw.on_done(self.transition(game_over, condition=self.done))
         throw.on_done(self.world.hotseat.next_player)
