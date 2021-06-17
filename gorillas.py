@@ -235,7 +235,9 @@ class World:
         self.scoreboard = Scoreboard()
         self.hotseat = Hotseat()
         self.sky = Sky(WIDTH, HEIGHT)
+        self.stars = pygame.image.load("images/stars.png")
         self.time = 0
+        self.sky_surface = self.generate_sky_bg()
         self.reset()
 
     def reset(self):
@@ -257,9 +259,17 @@ class World:
             for i in (0, self.skyline.num_buildings - 1)
         ]
 
-    def draw(self) -> None:
-        screen.blit(self.sky.gradient(self.time), (0, 0))
+    def generate_sky_bg(self):
+        surface = self.sky.gradient(self.time)
+        star_alpha = self.sky.star_alpha(self.time)
+        if star_alpha > 0.0:
+            stars = self.stars.copy()
+            stars.set_alpha(star_alpha * 255)
+            surface.blit(stars, (0, 0))
+        return surface
 
+    def draw(self) -> None:
+        screen.blit(self.sky_surface, (0, 0))
         self.skyline.draw()
 
         for gorilla in self.gorillas:
@@ -286,6 +296,7 @@ class World:
             time = random.randint(0, 360)
         time = time % 360
         self.time = time
+        self.sky_surface = self.generate_sky_bg()
 
 
 class GameState(EventSource, State):
@@ -539,6 +550,10 @@ class Game(StateMachine):
         self.current_state.update(dt)
 
     def on_key_up(self, *args, **kwargs) -> None:
+        if args[0] == keys.T:
+            self.world.set_time()
+        if args[0] == keys.W:
+            self.world.change_wind()
         self.current_state.on_key_up(*args, **kwargs)
 
     def on_mouse_down(self, *args, **kwargs) -> None:
