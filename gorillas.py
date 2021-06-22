@@ -7,6 +7,7 @@ from pgzero.keyboard import keys
 from pgzero.rect import Rect
 from pygame.math import Vector2
 
+from animation import Timeline
 from event import Event
 from event import EventSource
 from sky import Sky
@@ -235,9 +236,6 @@ class World:
         self.scoreboard = Scoreboard()
         self.hotseat = Hotseat()
         self.sky = Sky(WIDTH, HEIGHT)
-        self.stars = pygame.image.load("images/stars.png")
-        self.time = 0
-        self.sky_surface = self.generate_sky_bg()
         self.reset()
 
     def reset(self):
@@ -259,17 +257,8 @@ class World:
             for i in (0, self.skyline.num_buildings - 1)
         ]
 
-    def generate_sky_bg(self):
-        surface = self.sky.gradient(self.time)
-        star_alpha = self.sky.star_alpha(self.time)
-        if star_alpha > 0.0:
-            stars = self.stars.copy()
-            stars.set_alpha(star_alpha * 255)
-            surface.blit(stars, (0, 0))
-        return surface
-
     def draw(self) -> None:
-        screen.blit(self.sky_surface, (0, 0))
+        screen.blit(self.sky.surface, (0, 0))
         self.skyline.draw()
 
         for gorilla in self.gorillas:
@@ -293,10 +282,8 @@ class World:
 
     def set_time(self, *_, time=None):
         if time is None:
-            time = random.randint(0, 360)
-        time = time % 360
-        self.time = time
-        self.sky_surface = self.generate_sky_bg()
+            time = random.randint(0, 240)
+        self.sky.time = (time % 240) / 10
 
 
 class GameState(EventSource, State):
@@ -335,15 +322,46 @@ class GetReady(GameState):
     def __init__(self, world: World) -> None:
         self.done = Event()
         self.world = world
+        self.timer = 0
+        self.max_time = 3
+        self.bar_pos = Timeline(
+            (0, Vector2(0, HEIGHT / 2)),
+            (1, Vector2(0, HEIGHT / 2 - 46)),
+            (2, Vector2(0, HEIGHT / 2 - 46)),
+            (3, Vector2(0, HEIGHT / 2)),
+        )
+        self.bar_size = Timeline(
+            (0, Vector2(WIDTH, 1)),
+            (1, Vector2(WIDTH, 92)),
+            (2, Vector2(WIDTH, 92)),
+            (3, Vector2(WIDTH, 1)),
+        )
 
         self.on_done(self.world.draw)
+        self.get_ready = [
+            pygame.image.load("images/get_ready_player_1.png"),
+            pygame.image.load("images/get_ready_player_2.png"),
+        ]
+        image_width, image_height = self.get_ready[0].get_size()
+        self.text_pos = Timeline(
+            (0, Vector2(-image_width, (HEIGHT - image_height) / 2)),
+            (1, Vector2((WIDTH - image_width) / 2, (HEIGHT - image_height) / 2)),
+            (2, Vector2((WIDTH - image_width) / 2, (HEIGHT - image_height) / 2)),
+            (3, Vector2(WIDTH, (HEIGHT - image_height) / 2)),
+        )
+
+    def start(self, *_):
+        self.elapsed = 0
 
     def draw(self) -> None:
         self.world.draw()
-        screen.draw.filled_rect(Rect((0, HEIGHT / 2), (WIDTH, 16)), (0, 0, 0))
-        screen.draw.text(
-            f"Get ready Player {self.world.hotseat.index + 1}",
-            (WIDTH / 2 - 90, HEIGHT / 2),
+        screen.draw.filled_rect(
+            Rect(self.bar_pos.at(self.timer), self.bar_size.at(self.timer)),
+            (255, 0, 255),
+        )
+        screen.blit(
+            self.get_ready[self.world.hotseat.index],
+            self.text_pos.at(self.timer),
         )
 
     def update(self, dt) -> None:
