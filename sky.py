@@ -67,7 +67,7 @@ class Sky:
 
     @cached_property
     def surface(self):
-        surface = self.gradient.at(self.time).get_surface(self.width, self.height)
+        surface = self.gradient.at(self.time).get_surface((self.width, self.height))
         star_alpha = self.star_alpha.at(self.time)
         if star_alpha > 0.0:
             stars = StarField(self.width, self.height)
@@ -84,7 +84,7 @@ class StarField:
     def __init__(self, width: int, height: int) -> None:
         self.width = width
         self.height = height
-        num_stars = int(width * height * 0.001)
+        num_stars = int(width * height * 0.0005)
         self.surface = Surface((width, height)).convert_alpha()
 
         for _ in range(num_stars):

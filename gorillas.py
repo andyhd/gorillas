@@ -5,11 +5,14 @@ import pygame
 from pgzero.actor import Actor
 from pgzero.keyboard import keys
 from pgzero.rect import Rect
+from pygame import Color
+from pygame import Surface
 from pygame.math import Vector2
 
 from animation import Timeline
 from event import Event
 from event import EventSource
+from gradient import Gradient
 from sky import Sky
 from state import State
 from state import StateMachine
@@ -67,7 +70,7 @@ class Skyline:
 
     def generate_buildings(self):
         self.buildings = Building.random_list(self.num_buildings)
-        self.surface = pygame.Surface((WIDTH, HEIGHT))
+        self.surface = Surface((WIDTH, HEIGHT))
         for building in self.buildings:
             building.do_draw(self.surface)
         self.mask = pygame.mask.from_surface(self.surface)
@@ -119,10 +122,10 @@ class Explosion:
 
     def __init__(self, pos: tuple[float, float]) -> None:
         self.rect = Rect(pos, (self.WIDTH, self.HEIGHT))
-        self.surface = pygame.Surface((self.WIDTH, self.HEIGHT))
+        self.surface = Surface((self.WIDTH, self.HEIGHT))
         pygame.draw.circle(
             self.surface,
-            "white",
+            Color(255, 255, 255),
             (self.WIDTH / 2, self.HEIGHT / 2),
             self.WIDTH / 2,
             width=0,
@@ -156,7 +159,7 @@ class WindGauge:
     def draw(self):
         screen.draw.rect(
             Rect((self.left - 1, self.top), (self.width + 2, self.height + 2)),
-            "white",
+            Color(255, 255, 255),
         )
         screen.surface.blit(
             self.indicator,
@@ -166,7 +169,7 @@ class WindGauge:
         screen.draw.line(
             (self.center, self.top),
             (self.center, self.top + self.height),
-            "white",
+            Color(255, 255, 255),
         )
 
     def set_speed_and_direction(self, speed, direction):
@@ -178,23 +181,54 @@ class WindGauge:
             self.offset = -self.cliprect.width
 
 
+class HealthBar:
+    def __init__(self, pos, size, max_value, flip=False) -> None:
+        self.rect = Rect(pos, size)
+        self.max_value = max_value
+        self.value = max_value
+        self.gradient = Gradient(Color(255, 0, 0), Color(255, 255, 0))
+        self.surface = self.gradient.get_surface(size, horizontal=True)
+        self.flip = flip
+        if flip:
+            self.surface = pygame.transform.flip(self.surface, True, False)
+
+    @property
+    def cliprect(self):
+        width = self.rect.width * (self.value / self.max_value)
+        x = self.rect.width - width if self.flip else 0
+        return Rect(x, 0, width, self.rect.height)
+
+    def draw(self):
+        cliprect = self.cliprect
+        x = self.rect.width - cliprect.width if self.flip else 0
+        screen.surface.blit(
+            self.surface, (self.rect.left + x, self.rect.top), self.cliprect
+        )
+
+
 class Scoreboard:
     def __init__(self):
         self.scores = [0, 0]
+        self.healthbars = [
+            HealthBar((0, 16), (200, 32), 3),
+            HealthBar((WIDTH - 200, 16), (200, 32), 3, flip=True),
+        ]
 
     def __iter__(self):
         return iter(self.scores)
 
     def draw(self):
-        screen.draw.filled_rect(Rect((0, HEIGHT - 16), (WIDTH, 16)), (0, 0, 0))
-        screen.draw.text(f"Player 1: {self.scores[0]}", (0, HEIGHT - 16))
-        screen.draw.text(f"Player 2: {self.scores[1]}", (WIDTH - 90, HEIGHT - 16))
+        for healthbar in self.healthbars:
+            healthbar.draw()
 
     def add_score(self, index, value=1):
         self.scores[index] += value
+        self.healthbars[(index + 1) % 2].value -= 1
 
     def reset(self):
         self.scores = [0, 0]
+        for healthbar in self.healthbars:
+            healthbar.value = 3
 
 
 class Hotseat:
@@ -357,7 +391,7 @@ class GetReady(GameState):
         self.world.draw()
         screen.draw.filled_rect(
             Rect(self.bar_pos.at(self.timer), self.bar_size.at(self.timer)),
-            (255, 0, 255),
+            Color(255, 0, 255),
         )
         screen.blit(
             self.get_ready[self.world.hotseat.index],
@@ -398,7 +432,7 @@ class ThrowInput(GameState):
             angle = 180 - angle
         power = int(self.power_input)
 
-        screen.draw.filled_rect(Rect((0, 0), (WIDTH, 16)), (0, 0, 0))
+        screen.draw.filled_rect(Rect((0, 0), (WIDTH, 16)), Color(0, 0, 0))
         screen.draw.text(
             f"Angle: {str(angle)}, Power: {str(power)}",
             (0, 0),
@@ -572,6 +606,8 @@ class Game(StateMachine):
             self.world.set_time()
         if args[0] == keys.W:
             self.world.change_wind()
+        if args[0] == keys.R:
+            self.world.reset()
         self.current_state.on_key_up(*args, **kwargs)
 
     def on_mouse_down(self, *args, **kwargs) -> None:
