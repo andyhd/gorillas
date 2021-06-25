@@ -1,5 +1,6 @@
 import math
 import random
+from functools import cached_property
 
 import pygame
 from pgzero.actor import Actor
@@ -13,6 +14,7 @@ from animation import Timeline
 from event import Event
 from event import EventSource
 from gradient import Gradient
+from progress_bar import ProgressBar
 from sky import Sky
 from state import State
 from state import StateMachine
@@ -147,62 +149,62 @@ class Banana(Actor, PixelCollision):
 
 
 class WindGauge:
-    def __init__(self, centertop, dimensions, max_wind_speed) -> None:
-        self.indicator = pygame.image.load("images/wind_indicator.png")
-        (self.center, self.top) = centertop
-        (self.width, self.height) = dimensions
-        self.left = self.center - (self.width / 2)
-        self.cliprect = Rect((self.width / 2, 0), (0, self.height))
-        self.offset = 0
-        self.step = (self.width / 2) / max_wind_speed
+    def __init__(self, pos, size, max_value) -> None:
+        gradient = Gradient(
+            Color(0, 255, 0),
+            Color(255, 0, 0),
+        )
+        self.rect = Rect(pos, size)
+        self.bar = ProgressBar(
+            pos,
+            gradient.get_surface(
+                (self.rect.width / 2, self.rect.height), horizontal=True
+            ),
+            max_value,
+        )
+        self.bar.value = 0
 
-    def draw(self):
-        screen.draw.rect(
-            Rect((self.left - 1, self.top), (self.width + 2, self.height + 2)),
+    @cached_property
+    def surface(self):
+        surface = Surface(self.rect.size)
+        x = 0 if self.bar.flip else self.rect.width / 2
+        surface.blit(self.bar.surface, (x, 0))
+
+        pygame.draw.rect(
+            surface,
             Color(255, 255, 255),
+            Rect((0, 0), self.rect.size),
+            width=1,
         )
-        screen.surface.blit(
-            self.indicator,
-            (self.center + self.offset, self.top + 1),
-            self.cliprect,
-        )
-        screen.draw.line(
-            (self.center, self.top),
-            (self.center, self.top + self.height),
+        pygame.draw.line(
+            surface,
             Color(255, 255, 255),
+            (self.rect.width / 2, 0),
+            (self.rect.width / 2, self.rect.height),
         )
+        return surface
 
     def set_speed_and_direction(self, speed, direction):
-        self.offset = 0
-        self.cliprect.left = self.width / 2
-        self.cliprect.width = speed * self.step
-        if direction < 0:
-            self.cliprect.left -= self.cliprect.width
-            self.offset = -self.cliprect.width
+        try:
+            del self.surface
+        except AttributeError:
+            pass
+
+        self.bar.value = speed
+        self.bar.flip = direction < 0
 
 
-class HealthBar:
+class HealthBar(ProgressBar):
     def __init__(self, pos, size, max_value, flip=False) -> None:
-        self.rect = Rect(pos, size)
-        self.max_value = max_value
-        self.value = max_value
-        self.gradient = Gradient(Color(255, 0, 0), Color(255, 255, 0))
-        self.surface = self.gradient.get_surface(size, horizontal=True)
-        self.flip = flip
-        if flip:
-            self.surface = pygame.transform.flip(self.surface, True, False)
-
-    @property
-    def cliprect(self):
-        width = self.rect.width * (self.value / self.max_value)
-        x = self.rect.width - width if self.flip else 0
-        return Rect(x, 0, width, self.rect.height)
-
-    def draw(self):
-        cliprect = self.cliprect
-        x = self.rect.width - cliprect.width if self.flip else 0
-        screen.surface.blit(
-            self.surface, (self.rect.left + x, self.rect.top), self.cliprect
+        gradient = Gradient(
+            Color(255, 0, 0),
+            Color(255, 255, 0),
+        )
+        super().__init__(
+            pos,
+            gradient.get_surface(size, horizontal=True),
+            max_value,
+            flip=flip,
         )
 
 
@@ -219,7 +221,7 @@ class Scoreboard:
 
     def draw(self):
         for healthbar in self.healthbars:
-            healthbar.draw()
+            screen.surface.blit(healthbar.surface, healthbar.rect.topleft)
 
     def add_score(self, index, value=1):
         self.scores[index] += value
@@ -261,8 +263,8 @@ class World:
         self.wind_speed_max = 8
         self.wind_direction = 1
         self.wind_gauge = WindGauge(
-            (WIDTH / 2, HEIGHT - 16),
-            (160, 14),
+            (WIDTH / 2 - 80, HEIGHT - 16),
+            (160, 16),
             self.wind_speed_max,
         )
         self.gorillas = []
@@ -299,7 +301,7 @@ class World:
             gorilla.draw()
 
         self.scoreboard.draw()
-        self.wind_gauge.draw()
+        screen.blit(self.wind_gauge.surface, self.wind_gauge.rect.topleft)
         self.hotseat.draw()
 
     def set_angle_and_power(self, angle, power):

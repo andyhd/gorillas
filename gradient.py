@@ -1,8 +1,12 @@
-from typing import Iterable
+from typing import Union
 
 from pygame import Color
 from pygame import Surface
+from pygame.math import Vector2
 from pygame.transform import scale
+
+
+Size = Union[list[float], tuple[float, float], Vector2]
 
 
 class Gradient:
@@ -20,8 +24,8 @@ class Gradient:
             self.end.lerp(other.end, quotient),
         )
 
-    def get_surface(self, size: Iterable[int], horizontal: bool = False):
-        width, height = size
+    def get_surface(self, size: Size, horizontal: bool = False):
+        width, height = (int(size[0]), int(size[1]))
         x, y = (0, 1)
         max_value = height
         surface_size = (1, height)
