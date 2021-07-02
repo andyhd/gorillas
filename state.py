@@ -10,7 +10,6 @@ class State:
 
 
 class StateMachine:
-
     @property
     def current_state(self) -> State:
         if not hasattr(self, "_current_state"):
@@ -32,4 +31,8 @@ class StateMachine:
                 return
             self.current_state = to_state
             self.current_state.set_context(context)
+            notify = getattr(self.current_state, "start", None)
+            if callable(notify):
+                notify()
+
         return state_setter

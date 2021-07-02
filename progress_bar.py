@@ -1,20 +1,16 @@
 from functools import cached_property
-from typing import Union
 
 from pygame import Rect
 from pygame import Surface
 from pygame import transform
-from pygame import Vector2
 
-
-Pos = Union[list[float], tuple[float, float], Vector2]
-Size = Pos
+from type_defs import Vector
 
 
 class ProgressBar:
     def __init__(
         self,
-        pos: Pos,
+        pos: Vector,
         surface,
         max_value: float = 100.0,
         flip=False,
@@ -22,7 +18,7 @@ class ProgressBar:
         self._surface = surface
         self.size = surface.get_size()
         self.pos = pos
-        self.rect = Rect(pos, self.size)
+        self.rect = Rect(*pos, *self.size)
         self.max_value = max_value
         self._value = max_value
         self.flip = flip

@@ -1,12 +1,8 @@
-from typing import Union
-
 from pygame import Color
 from pygame import Surface
-from pygame.math import Vector2
 from pygame.transform import scale
 
-
-Size = Union[list[float], tuple[float, float], Vector2]
+from type_defs import Size
 
 
 class Gradient:
@@ -25,7 +21,7 @@ class Gradient:
         )
 
     def get_surface(self, size: Size, horizontal: bool = False):
-        width, height = (int(size[0]), int(size[1]))
+        width, height = map(int, (*size,))
         x, y = (0, 1)
         max_value = height
         surface_size = (1, height)
