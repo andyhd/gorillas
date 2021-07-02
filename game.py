@@ -1,4 +1,6 @@
-from pgzero.keyboard import keys
+from pygame import K_r
+from pygame import K_t
+from pygame import K_w
 
 from state import StateMachine
 from states import GameOver
@@ -46,11 +48,11 @@ class Game(StateMachine):
         self.current_state.update(dt)
 
     def on_key_up(self, *args, **kwargs) -> None:
-        if args[0] == keys.T:
+        if args[0] == K_t:
             self.world.set_time()
-        if args[0] == keys.W:
+        if args[0] == K_w:
             self.world.change_wind()
-        if args[0] == keys.R:
+        if args[0] == K_r:
             self.world.reset()
         self.current_state.on_key_up(*args, **kwargs)
 

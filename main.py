@@ -1,30 +1,41 @@
+import pygame
+
 from config import HEIGHT
 from config import WIDTH
 from game import Game
 
 
-game = Game()
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Gorilla Shootout")
+    clock = pygame.time.Clock()
+
+    game = Game()
+
+    game.render(screen)
+    pygame.display.flip()
+
+    while True:
+        dt = clock.tick(60) / 1000.0
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.KEYUP:
+                game.on_key_up(event.key, event.mod)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                game.on_mouse_down(event.pos, event.button)
+            if event.type == pygame.MOUSEBUTTONUP:
+                game.on_mouse_up(event.pos, event.button)
+            if event.type == pygame.MOUSEMOTION:
+                game.on_mouse_move(event.pos, event.rel, event.buttons)
+
+        game.update(dt)
+
+        game.render(screen)
+        pygame.display.flip()
 
 
-def draw() -> None:
-    game.render(screen.surface)
-
-
-def update(dt) -> None:
-    game.update(dt)
-
-
-def on_key_up(key, mod) -> None:
-    game.on_key_up(key, mod)
-
-
-def on_mouse_down(pos, button) -> None:
-    game.on_mouse_down(pos, button)
-
-
-def on_mouse_move(pos, rel, buttons) -> None:
-    game.on_mouse_move(pos, rel, buttons)
-
-
-def on_mouse_up(pos, button) -> None:
-    game.on_mouse_up(pos, button)
+if __name__ == "__main__":
+    main()
