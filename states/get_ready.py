@@ -58,6 +58,7 @@ class GetReady(GameState):
         )
 
     def update(self, dt) -> None:
+        self.world.update(dt)
         if not hasattr(self, "timer"):
             self.timer = 0
         self.timer += dt

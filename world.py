@@ -6,6 +6,7 @@ from pygame.math import Vector2
 from config import HEIGHT
 from config import WIDTH
 from explosion import Explosion
+from explosion import ExplosionEmitter
 from gorilla import Gorilla
 from particle import Emitter
 from sky import Sky
@@ -37,7 +38,7 @@ class World:
         self.sky = Sky(WIDTH, HEIGHT)
         self.emitters = []
         wind_debris = Emitter()
-        wind_debris.add_factory(debris(self.wind, Rect(0, 0, WIDTH, HEIGHT)))
+        wind_debris.add_stream(debris(self.wind, Rect(0, 0, WIDTH, HEIGHT)))
         self.emitters.append(wind_debris)
         self.reset()
 
@@ -95,6 +96,15 @@ class World:
     def add_explosion(self, pos):
         explosion = Explosion(pos)
         self.skyline.destroy(explosion)
+        emitter = ExplosionEmitter(pos=pos)
+        emitter.on_done(self.remove_explosion)
+        self.emitters.append(emitter)
+
+    def remove_explosion(self, emitter):
+        def _remove_explosion():
+            self.emitters.remove(emitter)
+
+        return _remove_explosion
 
     def next_player(self, *_):
         self.current_player = (self.current_player + 1) % 2

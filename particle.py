@@ -1,4 +1,3 @@
-import math
 import sys
 from functools import cached_property
 from itertools import islice
@@ -10,6 +9,7 @@ from typing import Union
 import pygame
 from pygame import Color
 from pygame import Rect
+from pygame import Surface
 from pygame.math import Vector2
 
 from animation import Timeline
@@ -17,12 +17,11 @@ from config import SPEED_FUDGE
 from type_defs import Translation
 from type_defs import Vector
 from util import identity_translation
-from util import rotate
 
 
 Callback = Callable[["Particle"], None]
 Force = Callable[["Particle", float], None]
-ParticleFactory = Iterable[Iterable["Particle"]]
+ParticleStream = Iterable[Iterable["Particle"]]
 
 
 class Particle:
@@ -35,25 +34,58 @@ class Particle:
     def __init__(
         self,
         pos: Optional[Vector2] = None,
-        size: Optional[Vector2] = None,
+        size: Optional[Union[Vector2, int]] = None,
         velocity: Optional[Vector2] = None,
         angle: float = 0,
+        scale: float = 1,
         colour: Optional[Color] = None,
         surface=None,
         mass: float = 0,
+        alpha: Optional[float] = None,
         forces: Optional[Iterable[Force]] = None,
     ) -> None:
         self.pos = pos or Vector2(0, 0)
         self.velocity = velocity or Vector2(0, 0)
-        self.colour = colour
-        self._original_surface = surface
-        if surface:
-            self.rect = surface.get_rect(center=(int(self.pos.x), int(self.pos.y)))
-        self.size = size or Vector2(1, 1)
-        self.angle = angle
+        self.alpha = 255 if alpha is None else alpha
         self.mass = mass
         self.forces = list(forces) if forces is not None else []
         self.age: float = 0
+
+        self._original_surface = surface
+        self._scale = scale
+        self._angle = angle
+        self._colour = colour
+
+        if surface:
+            self.size = Vector2(surface.get_size())
+            self._scale = scale
+            self._angle = angle
+
+        else:
+            if isinstance(size, int):
+                self.size = Vector2(size, size)
+            else:
+                self.size = size or Vector2(1, 1)
+            self.rect.center = (int(self.pos.x), int(self.pos.y))
+            self._colour = colour or Color(255, 255, 255)
+
+    @cached_property
+    def surface(self):
+        if self._original_surface:
+            surface = pygame.transform.rotozoom(
+                self._original_surface, self.angle, self.scale
+            )
+
+        else:
+            surface = Surface(self.size * self.scale).convert_alpha()
+            pygame.draw.circle(
+                surface,
+                self.colour,
+                center=(self.size / 2) * self.scale,
+                radius=(max(*self.size) / 2) * self.scale,
+            )
+
+        return surface
 
     @property
     def topleft(self):
@@ -63,12 +95,6 @@ class Particle:
     def rect(self):
         return Rect(self.topleft, self.size)
 
-    @rect.setter
-    def rect(self, *args):
-        rect = Rect(*args)
-        self.pos = Vector2(rect.center)
-        self.size = Vector2(rect.size)
-
     @property
     def angle(self) -> float:
         return self._angle
@@ -76,13 +102,27 @@ class Particle:
     @angle.setter
     def angle(self, angle: float) -> None:
         self._angle = angle
-
-        if not self._original_surface:
-            return
-
         self._update_surface()
-
         self.size = Vector2(self.surface.get_size())
+
+    @property
+    def scale(self) -> float:
+        return self._scale
+
+    @scale.setter
+    def scale(self, scale: float) -> None:
+        self._scale = scale
+        self._update_surface()
+        self.size = Vector2(self.surface.get_size())
+
+    @property
+    def colour(self) -> Optional[Color]:
+        return self._colour
+
+    @colour.setter
+    def colour(self, colour: Color) -> None:
+        self._colour = colour
+        self._update_surface()
 
     def update(self, dt: float) -> None:
         for force in self.forces:
@@ -98,41 +138,22 @@ class Particle:
         return self.age == -1
 
     def render(self, surface, translate: Translation = identity_translation) -> None:
-        if self.surface:
-            surface.blit(self.surface, translate(self.topleft))
-        else:
-            pygame.draw.circle(
-                surface,
-                self.colour,
-                translate(self.pos),
-                max(*self.size),
-            )
-
-    @cached_property
-    def surface(self):
-        if not self._original_surface:
-            return None
-
-        if self.angle % 360 == 0:
-            return self._original_surface
-
-        return pygame.transform.rotate(self._original_surface, self.angle)
+        self.surface.set_alpha(int(self.alpha))
+        surface.blit(self.surface, translate(self.topleft))
 
     def set_surface(self, value) -> None:
         self._original_surface = value
         self._update_surface()
 
     def _update_surface(self):
-        if self._original_surface:
-            try:
-                del self.surface
-            except AttributeError:
-                pass
+        try:
+            del self.surface
+        except AttributeError:
+            pass
 
     @property
     def mask(self):
-        if self.surface:
-            return pygame.mask.from_surface(self.surface)
+        return pygame.mask.from_surface(self.surface)
 
 
 class Emitter:
@@ -148,19 +169,19 @@ class Emitter:
         if pos:
             self.pos = Vector2(*pos)
         self.max_particles = max_particles
-        self.factories: list[ParticleFactory] = []
+        self.streams: list[ParticleStream] = []
 
-    def add_factory(self, factory: ParticleFactory, pre_fill: int = 0) -> None:
-        self.factories.append(factory)
-        for particles in islice(factory, pre_fill):
+    def add_stream(self, stream: ParticleStream, pre_fill: int = 0) -> None:
+        self.streams.append(stream)
+        for particles in islice(stream, pre_fill):
             for p in particles:
                 if len(self.particles) < self.max_particles:
                     p.pos += self.pos
                     self.particles.append(p)
 
     def update(self, dt: float) -> None:
-        for factory in self.factories:
-            for p in next(factory):
+        for stream in self.streams:
+            for p in next(stream):
                 if len(self.particles) < self.max_particles:
                     p.pos += self.pos
                     self.particles.append(p)
@@ -201,6 +222,34 @@ def gravity(accel: Vector = (0, 9.8)) -> Force:
     return _gravity
 
 
+def drag(
+    linear_coefficient: float,
+    squared_coefficient: float = 0.0,
+    fluid_velocity: Optional[Vector2] = None,
+    domain: Optional[Rect] = None,
+) -> Force:
+    """
+    Simulate viscous drag in a fluid
+    """
+
+    # a value close to zero used to avoid infinite forces
+    epsilon = 0.00001
+
+    if fluid_velocity is None:
+        fluid_velocity = Vector2(0, 0)
+
+    def _drag(particle: Particle, dt: float) -> None:
+        if not particle.killed and (domain is None or domain.contains(particle.pos)):
+            rvel = particle.velocity * dt - fluid_velocity * dt
+            rmag = rvel.length_squared()
+            if rmag > epsilon:
+                drag = linear_coefficient * rmag + squared_coefficient * rmag * rmag
+                force = ((rvel / rmag) * drag) / max(particle.mass, epsilon)
+                particle.velocity -= force
+
+    return _drag
+
+
 def colour_change(timeline: Timeline) -> Force:
     """
     Change particle colour based on its age and the specified timeline
@@ -212,13 +261,31 @@ def colour_change(timeline: Timeline) -> Force:
     return _change_colour
 
 
-def growth(amount: Union[float, Vector]) -> Force:
+def fade_out(duration: float, start: float = 0.0) -> Force:
+    """
+    Change particle alpha to transparent based on age
+    """
+
+    alpha_gradient = Timeline(
+        (start, 255),
+        (start + duration, 0),
+    )
+
+    def _fade_out(particle: Particle, _) -> None:
+        particle.alpha = alpha_gradient.at(particle.age)
+
+    return _fade_out
+
+
+def growth(amount: float) -> Force:
     """
     Grow or shrink a particle at a specified rate
     """
 
     def _grow(particle: Particle, dt: float) -> None:
-        particle.size += amount * dt
+        particle.scale = max(
+            (particle.size.x + amount * dt) / max(particle.size.x, 0.00001), 0
+        )
 
     return _grow
 

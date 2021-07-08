@@ -24,7 +24,7 @@ class Throw(GameState):
         self.hit_gorilla = Event()
         self.world = world
         self.banana_emitter = Emitter(max_particles=1)
-        self.banana_emitter.add_factory(self.banana_factory())
+        self.banana_emitter.add_stream(self.banana_factory())
         self.banana_img = pygame.image.load("images/banana.png").convert_alpha()
         self.hit_sound = pygame.mixer.Sound("sounds/hit.wav")
         self.throw_sound = pygame.mixer.Sound("sounds/throw.wav")
