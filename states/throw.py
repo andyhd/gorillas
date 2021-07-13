@@ -47,8 +47,10 @@ class Throw(GameState):
                         self.world.power * math.cos(self.world.angle),
                         -1 * self.world.power * math.sin(self.world.angle),
                     ),
+                    mass=4,
+                    drag_coefficient=0.5,
                     forces=(
-                        self.world.wind,
+                        self.world.wind.drag,
                         boundary(
                             Rect(0, -HEIGHT, WIDTH, HEIGHT * 2),
                             callback=self.out_of_bounds,

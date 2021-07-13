@@ -4,6 +4,7 @@ from typing import Optional
 
 from pygame import Color
 from pygame import Rect
+from pygame.math import Vector2
 
 from config import SPEED_FUDGE
 from event import Event
@@ -35,6 +36,20 @@ class Wind(EventSource):
 
     def __call__(self, particle: Particle, dt: float) -> None:
         particle.velocity.x += dt * self.speed * self.direction * SPEED_FUDGE
+
+    def drag(self, particle: Particle, dt: float) -> None:
+        rvel = (
+            particle.velocity * dt
+            - Vector2(self.speed * self.direction * SPEED_FUDGE, 0) * dt
+        )
+        rmag = rvel.length_squared()
+        if rmag > 0.00001:
+            drag = (
+                particle.drag_coefficient * rmag
+                + particle.drag_coefficient * particle.drag_coefficient * rmag * rmag
+            )
+            force = ((rvel / rmag) * drag) / max(particle.mass, 0.00001)
+            particle.velocity -= force
 
 
 def debris(wind: Wind, bounds: Rect) -> Iterable[Iterable[Particle]]:

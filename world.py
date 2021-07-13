@@ -9,6 +9,8 @@ from explosion import Explosion
 from explosion import ExplosionEmitter
 from gorilla import Gorilla
 from particle import Emitter
+from sky import clouds
+from sky import make_cloud_particle
 from sky import Sky
 from terrain import Building
 from terrain import Skyline
@@ -36,9 +38,20 @@ class World:
         self.scoreboard = Scoreboard()
         self.hotseat = HotseatIndicator()
         self.sky = Sky(WIDTH, HEIGHT)
+        bounds = Rect(-150, 0, WIDTH + 300, HEIGHT)
         self.emitters = []
+        cloud_emitter = Emitter(max_particles=7)
+        cloud_emitter.add_stream(
+            clouds(self.wind, bounds),
+        )
+        for _ in range(7):
+            cloud = make_cloud_particle(self.wind, bounds)
+            cloud.pos.x = random.randrange(WIDTH)
+            cloud.pos.y = random.randrange(60, int(bounds.height / 4))
+            cloud_emitter.particles.append(cloud)
+        self.emitters.append(cloud_emitter)
         wind_debris = Emitter()
-        wind_debris.add_stream(debris(self.wind, Rect(0, 0, WIDTH, HEIGHT)))
+        wind_debris.add_stream(debris(self.wind, bounds))
         self.emitters.append(wind_debris)
         self.reset()
 

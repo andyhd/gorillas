@@ -41,6 +41,7 @@ class Particle:
         colour: Optional[Color] = None,
         surface=None,
         mass: float = 0,
+        drag_coefficient: float = 0.47,
         alpha: Optional[float] = None,
         forces: Optional[Iterable[Force]] = None,
     ) -> None:
@@ -48,6 +49,7 @@ class Particle:
         self.velocity = velocity or Vector2(0, 0)
         self.alpha = 255 if alpha is None else alpha
         self.mass = mass
+        self.drag_coefficient = drag_coefficient
         self.forces = list(forces) if forces is not None else []
         self.age: float = 0
 

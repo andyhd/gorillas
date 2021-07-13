@@ -1,12 +1,21 @@
+import math
 import random
 from functools import cached_property
+from typing import Iterable
 
 from pygame import Color
 from pygame import draw
+from pygame import Rect
 from pygame import Surface
+from pygame.constants import HWSURFACE
+from pygame.constants import SRCALPHA
 
 from animation import Timeline
 from gradient import Gradient
+from particle import boundary
+from particle import drag
+from particle import Particle
+from wind import Wind
 
 
 class Sky:
@@ -73,6 +82,7 @@ class Sky:
             stars = StarField(self.width, self.height)
             stars.surface.set_alpha(star_alpha * 255)
             surface.blit(stars.surface, (0, 0))
+
         return surface
 
 
@@ -100,3 +110,54 @@ class StarField:
                     1,
                     width=0,
                 )
+
+
+class Cloud:
+    """
+    Procedurally generated cloud
+    """
+
+    def __init__(self, width: int, height: int) -> None:
+        self.width = width
+        self.height = height
+        half_width = width / 2
+        margin = int(max(1, width / 10))
+        self.surface = Surface(
+            (width, height),
+            flags=HWSURFACE,
+        ).convert_alpha()
+
+        for _ in range(random.randint(20, 40)):
+            x = random.randrange(margin, width - margin)
+            dist_from_center = abs(half_width - x)
+            scale = random.random() + 2 * math.sin(1 / (dist_from_center + 1))
+            y = height - 2
+            r = max(1, margin * scale)
+            draw.circle(self.surface, Color(255, 255, 255), (x, y), r, width=0)
+
+
+def make_cloud_particle(wind: Wind, bounds: Rect) -> Particle:
+    cloud = Cloud(random.randrange(100, 300), 100)
+    return Particle(
+        surface=cloud.surface,
+        mass=1,
+        alpha=128,
+        drag_coefficient=random.uniform(0.4, 0.8),
+        forces=(
+            wind.drag,
+            boundary(bounds),
+        ),
+    )
+
+
+def clouds(wind: Wind, bounds: Rect) -> Iterable[Iterable[Particle]]:
+    while True:
+        if random.random() < 0.95:
+            p = make_cloud_particle(wind, bounds)
+            p.pos.y = random.randrange(60, int(bounds.height / 4))
+            p.pos.x = bounds.left
+            if wind.direction < 0:
+                p.pos.x = bounds.right - 1
+            yield [p]
+        else:
+            yield []
