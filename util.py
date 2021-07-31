@@ -1,5 +1,7 @@
 from typing import Optional
 
+from pygame import Rect
+from pygame import Surface
 from pygame import transform
 from pygame.math import Vector2
 
@@ -24,3 +26,12 @@ class Renderable:
             translate = identity_translation
 
         surface.blit(self.surface, translate(self.rect.topleft))
+
+
+def tile(surface: Surface, tile: Surface, area: Rect) -> None:
+    surface.set_clip(area)
+    tile_width, tile_height = tile.get_size()
+    for y in range(area.top, area.bottom, tile_height):
+        for x in range(area.left, area.right, tile_width):
+            surface.blit(tile, (x, y))
+    surface.set_clip(None)

@@ -63,15 +63,25 @@ class World:
 
     def rebuild(self, *_):
         self.skyline.generate_buildings()
-        self.gorillas = [
+        self.gorillas = []
+        offset_x = Building.MIN_WIDTH // 2
+        offset_y = Gorilla.HEIGHT // 2 - 1
+        self.gorillas.append(
             Gorilla(
                 (
-                    self.skyline.buildings[i].x + Building.WIDTH / 2,
-                    self.skyline.buildings[i].y - Gorilla.HEIGHT / 2 + 1,
+                    self.skyline.buildings[0].left + offset_x,
+                    self.skyline.buildings[0].top - offset_y,
                 )
             )
-            for i in (0, self.skyline.num_buildings - 1)
-        ]
+        )
+        self.gorillas.append(
+            Gorilla(
+                (
+                    self.skyline.buildings[-1].right - offset_x,
+                    self.skyline.buildings[-1].top - offset_y,
+                )
+            )
+        )
         self.hotseat.pos = Vector2(
             self.gorillas[0].rect.left, self.gorillas[0].rect.top - 128
         )

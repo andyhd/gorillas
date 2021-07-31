@@ -1,19 +1,20 @@
 import pygame
 from pygame import Color
 from pygame import Rect
+from pygame import Surface
 from pygame.math import Vector2
 
 from animation import Timeline
 from config import HEIGHT
 from config import WIDTH
-from event import Event
-from states.base import GameState
+from screens.base import Screen
 from world import World
 
 
-class GetReady(GameState):
+class GetReady(Screen):
     def __init__(self, world: World) -> None:
-        self.done = Event()
+        super().__init__()
+
         self.world = world
         self.timer = 0
         self.max_time = 3
@@ -42,26 +43,27 @@ class GetReady(GameState):
             (3, Vector2(WIDTH, (HEIGHT - image_height) / 2)),
         )
 
-    def start(self, *_):
+    def enter(self, *_) -> None:
         self.elapsed = 0
 
-    def render(self, surface) -> None:
-        self.world.render(surface)
+    def render(self, surface: Surface) -> None:
+        self.world.render(self.surface)
         pygame.draw.rect(
-            surface,
+            self.surface,
             Color(255, 0, 255),
             Rect(self.bar_pos.at(self.timer), self.bar_size.at(self.timer)),
         )
-        surface.blit(
+        self.surface.blit(
             self.get_ready[self.world.current_player],
             self.text_pos.at(self.timer),
         )
+        super().render(surface)
 
-    def update(self, dt) -> None:
+    def update(self, dt: float) -> None:
         self.world.update(dt)
         if not hasattr(self, "timer"):
             self.timer = 0
         self.timer += dt
         if self.timer > 3:
-            self.done()
+            self.exit()
             self.timer = 0

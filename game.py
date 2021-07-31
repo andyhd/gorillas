@@ -2,16 +2,18 @@ from pygame import K_r
 from pygame import K_t
 from pygame import K_w
 
-from state import StateMachine
-from states import GameOver
-from states import GetReady
-from states import MainMenu
-from states import Throw
-from states import ThrowInput
+from screens import GameOver
+from screens import GetReady
+from screens import MainMenu
+from screens import Throw
+from screens import ThrowInput
+from screens.base import ScreenManager
+from transition import FadeToBlack
+from transition import Wipe
 from world import World
 
 
-class Game(StateMachine):
+class Game(ScreenManager):
     def __init__(self) -> None:
         self.world = World()
 
@@ -21,31 +23,36 @@ class Game(StateMachine):
         throw = Throw(self.world)
         game_over = GameOver()
 
-        menu.on_done(self.transition(get_ready))
-        get_ready.on_done(self.transition(throw_input))
-        get_ready.on_done(throw_input.reset_angle)
-        throw_input.on_done(self.world.set_angle_and_power)
-        throw_input.on_done(self.transition(throw))
+        menu.on_exit(
+            self.set_state(
+                get_ready,
+                transition=Wipe(0.3),
+            )
+        )
+        get_ready.on_exit(self.set_state(throw_input))
+        get_ready.on_exit(throw_input.reset_angle)
+        throw_input.on_exit(self.world.set_angle_and_power)
+        throw_input.on_exit(self.set_state(throw))
         throw.on_hit_gorilla(self.world.scoreboard.add_score)
         throw.on_hit_gorilla(self.world.change_wind)
         throw.on_hit_gorilla(self.world.set_time)
         throw.on_hit_gorilla(self.world.rebuild)
-        throw.on_done(self.transition(game_over, condition=self.done))
-        throw.on_done(self.world.next_player)
-        throw.on_done(self.transition(get_ready, condition=lambda: not self.done()))
-        game_over.on_done(self.world.reset)
-        game_over.on_done(self.transition(menu))
+        throw.on_exit(
+            self.set_state(
+                game_over,
+                condition=self.done,
+                transition=FadeToBlack(3),
+            ),
+        )
+        throw.on_exit(self.world.next_player)
+        throw.on_exit(self.set_state(get_ready, condition=lambda: not self.done()))
+        game_over.on_exit(self.world.reset)
+        game_over.on_exit(self.set_state(menu))
 
         self.current_state = menu
 
     def done(self) -> bool:
         return any(score > 2 for score in self.world.scoreboard)
-
-    def render(self, surface) -> None:
-        self.current_state.render(surface)
-
-    def update(self, dt) -> None:
-        self.current_state.update(dt)
 
     def on_key_up(self, *args, **kwargs) -> None:
         if args[0] == K_t:

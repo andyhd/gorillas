@@ -1,12 +1,17 @@
-from typing import Any
 from typing import Callable
-from typing import Optional
+from typing import Union
+
+
+Callback = Callable[[], None]
+Condition = Union[bool, Callable[[], bool]]
 
 
 class State:
-    def set_context(self, context: dict[str, Any]):
-        if context:
-            self.__dict__.update(context)
+    def enter(self) -> None:
+        pass
+
+    def exit(self, *_) -> None:
+        pass
 
 
 class StateMachine:
@@ -19,20 +24,15 @@ class StateMachine:
     @current_state.setter
     def current_state(self, state: State) -> None:
         self._current_state = state
+        self._current_state.enter()
 
-    def transition(
+    def set_state(
         self,
         to_state: State,
-        condition: Optional[Callable[[], bool]] = None,
-        **context,
-    ) -> Callable[[], None]:
-        def state_setter(*args, **kwargs) -> None:
-            if callable(condition) and not condition():
-                return
-            self.current_state = to_state
-            self.current_state.set_context(context)
-            notify = getattr(self.current_state, "start", None)
-            if callable(notify):
-                notify()
+        condition: Condition = True,
+    ) -> Callback:
+        def state_setter(*_) -> None:
+            if (callable(condition) and condition()) or condition:
+                self.current_state = to_state
 
         return state_setter

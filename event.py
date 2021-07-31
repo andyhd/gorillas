@@ -5,12 +5,11 @@ class Event(list):
 
 
 class EventSource:
-
     def __getattr__(self, name):
-        if not name.startswith("on_"):
-            return self.__getattribute__(name)
+        if name.startswith("on_"):
+            event = getattr(self, name[3:], None)
 
-        event = name[3:]
-        if not hasattr(self, event):
-            setattr(self, event, Event())
-        return getattr(self, event).append
+            if isinstance(event, Event):
+                return event.append
+
+        return self.__getattribute__(name)

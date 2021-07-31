@@ -13,14 +13,14 @@ from particle import Emitter
 from particle import gravity
 from particle import Particle
 from particle import spin
-from states.base import GameState
+from screens.base import Screen
 from world import World
 
 
-class Throw(GameState):
+class Throw(Screen):
     def __init__(self, world: World) -> None:
-        self.start = Event()
-        self.done = Event()
+        super().__init__()
+
         self.hit_gorilla = Event()
         self.world = world
         self.banana_emitter = Emitter(max_particles=1)
@@ -29,15 +29,18 @@ class Throw(GameState):
         self.hit_sound = pygame.mixer.Sound("sounds/hit.wav")
         self.throw_sound = pygame.mixer.Sound("sounds/throw.wav")
 
-        self.on_start(self.launch_banana)
-        self.on_done(self.reset)
+        self.on_enter(self.launch_banana)
+        self.on_exit(self.reset)
 
     @property
     def opponent(self):
         return self.world.gorillas[(self.world.current_player + 1) % 2]
 
     def reset(self):
-        self.world.emitters.remove(self.banana_emitter)
+        try:
+            self.world.emitters.remove(self.banana_emitter)
+        except ValueError:
+            pass
 
     def banana_factory(self):
         while True:
@@ -47,8 +50,8 @@ class Throw(GameState):
                         self.world.power * math.cos(self.world.angle),
                         -1 * self.world.power * math.sin(self.world.angle),
                     ),
-                    mass=4,
-                    drag_coefficient=0.5,
+                    mass=2,
+                    drag_coefficient=0.3,
                     forces=(
                         self.world.wind.drag,
                         boundary(
@@ -65,20 +68,21 @@ class Throw(GameState):
             ]
 
     def out_of_bounds(self, *_) -> None:
-        self.done()
+        self.exit()
 
     def hit_skyline(self, particle: Particle) -> None:
         self.world.add_explosion(particle.pos)
         self.hit_sound.play()
-        self.done()
+        self.exit()
 
     def hit_opponent(self, _) -> None:
         self.hit_gorilla(self.world.current_player)
         self.hit_sound.play()
-        self.done()
+        self.exit()
 
     def render(self, surface) -> None:
-        self.world.render(surface)
+        self.world.render(self.surface)
+        super().render(surface)
 
     def update(self, dt) -> None:
         self.world.update(dt)

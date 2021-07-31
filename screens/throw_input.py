@@ -6,19 +6,19 @@ from pygame import Rect
 
 from config import HEIGHT
 from config import WIDTH
-from event import Event
 from gorilla import Gorilla
-from states.base import GameState
+from screens.base import Screen
 from util import rotate
 
 
-class ThrowInput(GameState):
+class ThrowInput(Screen):
     RETICLE_WIDTH = 32
 
     def __init__(self, world) -> None:
+        super().__init__()
+
         self.change_per_second = 100
         self.direction = 1
-        self.done = Event()
         self.angle_input = 0
         self.power_input = 10
         self.min_power = 10
@@ -32,7 +32,7 @@ class ThrowInput(GameState):
         self.world = world
 
     def render(self, surface) -> None:
-        self.world.render(surface)
+        self.world.render(self.surface)
 
         gorilla = self.world.gorillas[self.world.current_player]
         angle = int(self.angle_input * (180 / math.pi))
@@ -41,7 +41,7 @@ class ThrowInput(GameState):
         power = int(self.power_input)
 
         pygame.draw.rect(
-            surface,
+            self.surface,
             Color(0, 0, 0),
             Rect((0, 0), (WIDTH, 16)),
         )
@@ -53,7 +53,7 @@ class ThrowInput(GameState):
                 True,
                 Color(255, 255, 255),
             )
-        surface.blit(self.text_surface, (0, 0))
+        self.surface.blit(self.text_surface, (0, 0))
 
         angle_x = math.cos(self.angle_input)
         angle_y = math.sin(self.angle_input)
@@ -62,7 +62,7 @@ class ThrowInput(GameState):
             gorilla.pos.x + angle_x * Gorilla.WIDTH - self.RETICLE_WIDTH / 2,
             gorilla.pos.y - angle_y * Gorilla.WIDTH - self.RETICLE_WIDTH / 2,
         )
-        surface.blit(self.reticle, reticle_pos)
+        self.surface.blit(self.reticle, reticle_pos)
 
         if self.pulse_power:
             half_width = Gorilla.WIDTH / 2
@@ -76,10 +76,12 @@ class ThrowInput(GameState):
                 gorilla.rect.center,
                 (powerbar_length / 2 + 16, 0),
             )
-            surface.blit(
+            self.surface.blit(
                 powerbar,
                 rect.topleft,
             )
+
+        super().render(surface)
 
     def update(self, dt) -> None:
         self.world.update(dt)
@@ -109,4 +111,4 @@ class ThrowInput(GameState):
 
     def on_mouse_up(self, pos, button):
         self.pulse_power = False
-        self.done(self.angle_input, self.power_input)
+        self.exit(self.angle_input, self.power_input)
